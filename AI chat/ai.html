@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chandra Space Battle</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { overflow: hidden; font-family: 'Orbitron', sans-serif; background: #000; color: white; }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    background: url('space bg.jpg') no-repeat center center;
+    background-size: cover;
+  }
+  #hud {
+    position: absolute;
+    top: 10px;
+    left: 20px;
+    font-size: 18px;
+    font-weight: bold;
+    z-index: 10;
+    text-shadow: 0 0 8px #00eaff, 0 0 16px #00eaff;
+  }
+
+  /* --- Game Over Screen --- */
+  #gameOverScreen {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: white;
+    font-family: 'Orbitron', sans-serif;
+    display: none;
+    z-index: 20;
+  }
+  #gameOverScreen h1 {
+    font-size: 60px;
+    margin-bottom: 20px;
+    text-shadow: 0 0 10px #ff0044, 0 0 20px #ff0044, 0 0 40px #ff0044;
+    letter-spacing: 3px;
+  }
+  #gameOverScreen p {
+    font-size: 28px;
+    margin-bottom: 30px;
+    text-shadow: 0 0 8px #00eaff, 0 0 16px #00eaff;
+  }
+  #centerRetryBtn {
+    background: #00eaff;
+    color: black;
+    font-size: 22px;
+    font-family: 'Orbitron', sans-serif;
+    padding: 12px 30px;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    box-shadow: 0 0 15px #00eaff, 0 0 30px #00eaff;
+    transition: 0.3s;
+  }
+  #centerRetryBtn:hover {
+    background: #ff0044;
+    color: white;
+    box-shadow: 0 0 20px #ff0044, 0 0 40px #ff0044;
+  }
+
+  /* Mobile Controls */
+  #controls {
+    position: absolute;
+    width: 100%;
+    bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 20px;
+    z-index: 10;
+  }
+  #joystick {
+    display: grid;
+    grid-template-columns: 60px 60px 60px;
+    grid-template-rows: 60px 60px 60px;
+    gap: 10px;
+  }
+  #joystick .empty { visibility: hidden; }
+  #actionButtons {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    align-items: flex-end;
+  }
+  .btn {
+    background: #1a73e8;
+    color: white;
+    border: none;
+    font-size: 18px;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+    transition: transform 0.2s;
+    user-select: none;
+  }
+  .btn:active { transform: scale(0.9); }
+  .toggle-on { background: #ff9800 !important; box-shadow: 0 0 20px #ff9800; }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="hud">
+  ❤️ Health: <span id="health">100</span> | 
+  🏆 Score: <span id="score">0</span> | 
+  🥇 High Score: <span id="highscore">0</span> |
+  🚀 Level: <span id="level">1</span>
+</div>
+
+<div id="controls">
+  <div id="joystick">
+    <div class="empty"></div>
+    <button class="btn" data-key="ArrowUp">⬆</button>
+    <div class="empty"></div>
+    <button class="btn" data-key="ArrowLeft">⬅</button>
+    <div class="empty"></div>
+    <button class="btn" data-key="ArrowRight">➡</button>
+    <div class="empty"></div>
+    <button class="btn" data-key="ArrowDown">⬇</button>
+    <div class="empty"></div>
+  </div>
+
+  <div id="actionButtons">
+    <button class="btn" id="fireBtn" data-key="Space">🔥</button>
+    <button class="btn" id="scopeBtn">🔍</button>
+  </div>
+</div>
+
+<!-- Game Over Screen -->
+<div id="gameOverScreen">
+  <h1>💀 GAME OVER 💀</h1>
+  <p>Score: <span id="finalScore">0</span></p>
+  <button id="centerRetryBtn">🔄 Retry</button>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+const ctx = canvas.getContext("2d");
+
+const heroImg = new Image();
+heroImg.src = "spaceship_hero-removebg-preview.png";
+const enemyImg = new Image();
+enemyImg.src = "spaceship enemies.png";
+
+let hero, bullets, enemies, keys, scopeMode, health, score, gameOver;
+let spawnInterval, spawnTimer, enemySpeed, lastTime, level;
+let highScore = 0;
+
+const gameOverScreen = document.getElementById("gameOverScreen");
+const finalScoreDisplay = document.getElementById("finalScore");
+const centerRetryBtn = document.getElementById("centerRetryBtn");
+
+function resetGame() {
+  hero = { x: canvas.width/2 - 30, y: canvas.height - 100, w: 60, h: 60, speed: 6 };
+  bullets = [];
+  enemies = [];
+  keys = {};
+  scopeMode = false;
+  health = 100;
+  score = 0;
+  level = 1;
+  enemySpeed = 2;
+  spawnInterval = 2000;
+  spawnTimer = 0;
+  gameOver = false;
+  document.getElementById("health").textContent = health;
+  document.getElementById("score").textContent = score;
+  document.getElementById("highscore").textContent = highScore;
+  document.getElementById("level").textContent = level;
+  gameOverScreen.style.display = "none";
+}
+resetGame();
+
+function fireBullet() {
+  bullets.push({ x: hero.x + hero.w/2 - 5, y: hero.y, w: 8, h: 20 });
+}
+
+// Keyboard controls
+document.addEventListener("keydown", (e) => {
+  keys[e.code] = true;
+  if (e.code === "Space" && !gameOver) fireBullet();
+});
+document.addEventListener("keyup", (e) => keys[e.code] = false);
+
+// Mobile buttons
+document.querySelectorAll(".btn").forEach(btn => {
+  const key = btn.getAttribute("data-key");
+  if (!key) return;
+  function press() { keys[key] = true; if(key==="Space") fireBullet(); }
+  function release() { keys[key] = false; }
+  btn.addEventListener("mousedown", press);
+  btn.addEventListener("mouseup", release);
+  btn.addEventListener("mouseleave", release);
+  btn.addEventListener("touchstart", press);
+  btn.addEventListener("touchend", release);
+});
+
+// Scope toggle
+const scopeBtn = document.getElementById("scopeBtn");
+scopeBtn.addEventListener("click", () => {
+  scopeMode = !scopeMode;
+  scopeBtn.classList.toggle("toggle-on", scopeMode);
+});
+
+function update(deltaTime) {
+  if(gameOver) return;
+
+  if(keys["ArrowUp"]) hero.y -= hero.speed;
+  if(keys["ArrowDown"]) hero.y += hero.speed;
+  if(keys["ArrowLeft"]) hero.x -= hero.speed;
+  if(keys["ArrowRight"]) hero.x += hero.speed;
+  hero.x = Math.max(0, Math.min(canvas.width - hero.w, hero.x));
+  hero.y = Math.max(0, Math.min(canvas.height - hero.h, hero.y));
+
+  bullets.forEach((b,i)=>{ b.y-=12; if(b.y<0) bullets.splice(i,1); });
+
+  spawnTimer += deltaTime;
+  if(spawnTimer > spawnInterval){
+    spawnTimer = 0;
+    let enemiesToSpawn = 1 + Math.floor(level/2);
+    for(let i=0;i<enemiesToSpawn;i++){
+      enemies.push({x:Math.random()*(canvas.width-60), y:0, w:60, h:60, speed:enemySpeed});
+    }
+    if(spawnInterval > 400) spawnInterval -= 5;
+    if(enemySpeed < 10) enemySpeed += 0.05;
+  }
+
+  enemies.forEach((en,i)=>{
+    en.y += en.speed;
+    if(en.y>canvas.height) enemies.splice(i,1);
+
+    if(en.x<hero.x+hero.w && en.x+en.w>hero.x &&
+       en.y<hero.y+hero.h && en.y+en.h>hero.y){
+      health -= 20;
+      document.getElementById("health").textContent = health;
+      enemies.splice(i,1);
+      if(health<=0){
+        gameOver = true;
+        finalScoreDisplay.textContent = score;
+        gameOverScreen.style.display = "block";
+        if(score>highScore) highScore = score;
+        document.getElementById("highscore").textContent = highScore;
+      }
+    }
+  });
+
+  bullets.forEach((b,bi)=>{
+    enemies.forEach((en,ei)=>{
+      if(b.x<en.x+en.w && b.x+b.w>en.x && b.y<en.y+en.h && b.h+b.y>en.y){
+        enemies.splice(ei,1);
+        bullets.splice(bi,1);
+        score += 10;
+        document.getElementById("score").textContent = score;
+        if(score>highScore) document.getElementById("highscore").textContent = score;
+      }
+    });
+  });
+
+  level = Math.floor(score / 100) + 1;
+  document.getElementById("level").textContent = level;
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  if(scopeMode){
+    ctx.save();
+    ctx.scale(1.3,1.3);
+    ctx.translate(-hero.x/4,-hero.y/4);
+  }
+
+  ctx.drawImage(heroImg, hero.x, hero.y, hero.w, hero.h);
+
+  bullets.forEach(b=>{
+    const grad = ctx.createLinearGradient(b.x,b.y,b.x,b.y+b.h);
+    grad.addColorStop(0,"white");
+    grad.addColorStop(0.5,"yellow");
+    grad.addColorStop(1,"orange");
+    ctx.fillStyle = grad;
+    ctx.shadowColor="yellow"; ctx.shadowBlur=20;
+    ctx.fillRect(b.x,b.y,b.w,b.h);
+    ctx.shadowBlur=0;
+  });
+
+  enemies.forEach(en=>ctx.drawImage(enemyImg,en.x,en.y,en.w,en.h));
+
+  if(scopeMode) ctx.restore();
+}
+
+function gameLoop(timestamp){
+  const deltaTime = timestamp - lastTime;
+  lastTime = timestamp;
+  update(deltaTime);
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+lastTime = 0;
+gameLoop(0);
+
+centerRetryBtn.addEventListener("click",()=>resetGame());
+</script>
+
+</body>
+</html>
